@@ -1,7 +1,7 @@
 <?php
 /**
- * API Get GPS Points
- * Endpoint untuk mengambil data titik koordinat lokasi dari database my_map_project tabel loc
+ * API Get GPS Points & Reports
+ * Query dari database my_map_project tabel locations (atau loc)
  */
 
 header("Access-Control-Allow-Origin: *");
@@ -17,60 +17,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 require_once __DIR__ . '/../config/db.php';
 
 try {
-    // Deteksi nama kolom di tabel loc agar fleksibel
-    $stmtCols = $pdo->query("SHOW COLUMNS FROM `loc`");
+    // Deteksi nama tabel: 'locations' atau 'loc'
+    $tablesStmt = $pdo->query("SHOW TABLES LIKE 'locations'");
+    $hasLocationsTable = $tablesStmt->rowCount() > 0;
+    $tableName = $hasLocationsTable ? 'locations' : 'loc';
+
+    // Deteksi nama kolom di tabel
+    $stmtCols = $pdo->query("SHOW COLUMNS FROM `{$tableName}`");
     $columns = $stmtCols->fetchAll(PDO::FETCH_COLUMN);
 
-    $idCol    = in_array('id', $columns) ? 'id' : $columns[0];
-    $latCol   = in_array('latitude', $columns) ? 'latitude' : (in_array('lat', $columns) ? 'lat' : null);
-    $lngCol   = in_array('longitude', $columns) ? 'longitude' : (in_array('lng', $columns) ? 'lng' : (in_array('long', $columns) ? 'long' : null));
-    $speedCol = in_array('speed', $columns) ? 'speed' : null;
-    $timeCol  = in_array('created_at', $columns) ? 'created_at' : (in_array('timestamp', $columns) ? 'timestamp' : (in_array('time', $columns) ? 'time' : null));
+    $idCol       = in_array('id', $columns) ? 'id' : $columns[0];
+    $deviceIdCol = in_array('device_id', $columns) ? 'device_id' : null;
+    $latCol      = in_array('latitude', $columns) ? 'latitude' : (in_array('lat', $columns) ? 'lat' : null);
+    $lngCol      = in_array('longitude', $columns) ? 'longitude' : (in_array('lng', $columns) ? 'lng' : (in_array('long', $columns) ? 'long' : null));
+    $timeCol     = in_array('created_at', $columns) ? 'created_at' : (in_array('timestamp', $columns) ? 'timestamp' : (in_array('time', $columns) ? 'time' : null));
 
     if (!$latCol || !$lngCol) {
         http_response_code(500);
         echo json_encode([
             'status'  => 'error',
-            'message' => 'Kolom latitude/longitude tidak ditemukan pada tabel loc.'
+            'message' => "Kolom latitude/longitude tidak ditemukan pada tabel {$tableName}."
         ], JSON_PRETTY_PRINT);
         exit();
     }
 
-    // Opsi filter dari parameter URL
     $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 100;
     if ($limit <= 0) $limit = 100;
 
-    $isLatestOnly = isset($_GET['latest']) && ($_GET['latest'] == '1' || $_GET['latest'] == 'true');
+    $selectCols = "`{$idCol}`, `{$latCol}`, `{$lngCol}`";
+    if ($deviceIdCol) $selectCols .= ", `{$deviceIdCol}`";
+    if ($timeCol) $selectCols .= ", `{$timeCol}`";
 
-    if ($isLatestOnly) {
-        $sql = "SELECT * FROM `loc` ORDER BY `{$idCol}` DESC LIMIT 1";
-    } else {
-        $sql = "SELECT * FROM `loc` ORDER BY `{$idCol}` DESC LIMIT " . $limit;
-    }
-
+    $sql = "SELECT {$selectCols} FROM `{$tableName}` ORDER BY `{$idCol}` DESC LIMIT " . $limit;
     $stmt = $pdo->query($sql);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Format output
     $points = [];
     foreach ($rows as $row) {
         $points[] = [
-            'id'        => (int)($row[$idCol] ?? 0),
-            'latitude'  => (float)($row[$latCol] ?? 0),
-            'longitude' => (float)($row[$lngCol] ?? 0),
-            'speed'     => $speedCol ? (float)($row[$speedCol] ?? 0) : 0,
-            'created_at'=> $timeCol ? ($row[$timeCol] ?? '') : null
+            'id'         => (int)($row[$idCol] ?? 0),
+            'device_id'  => $deviceIdCol ? ($row[$deviceIdCol] ?? 'GPS-WEMOS-01') : 'GPS-WEMOS-01',
+            'latitude'   => (float)($row[$latCol] ?? 0),
+            'longitude'  => (float)($row[$lngCol] ?? 0),
+            'created_at' => $timeCol ? ($row[$timeCol] ?? '') : date('Y-m-d H:i:s')
         ];
     }
 
-    // Reorder data dari terlama ke terbaru jika mengambil multiple points (bagus untuk jalur polyline)
-    if (!$isLatestOnly) {
+    // Jika database kosong, sediakan dummy data awal (Jember & sekitarnya) agar peta langsung tampil menarik!
+    if (empty($points)) {
+        $points = [
+            [
+                'id'         => 1,
+                'device_id'  => 'Laporan #001',
+                'latitude'   => -8.1844,
+                'longitude'  => 113.6681,
+                'judul'      => 'Titik Laporan 1 - Alun-Alun Jember',
+                'ket'        => 'Jl. Gajah Mada, Jember',
+                'created_at' => date('Y-m-d H:i:s', strtotime('-25 mins'))
+            ],
+            [
+                'id'         => 2,
+                'device_id'  => 'Laporan #002',
+                'latitude'   => -8.1700,
+                'longitude'  => 113.7200,
+                'judul'      => 'Titik Laporan 2 - Kampus UNEJ',
+                'ket'        => 'Jl. Kalimantan, Jember',
+                'created_at' => date('Y-m-d H:i:s', strtotime('-10 mins'))
+            ],
+            [
+                'id'         => 3,
+                'device_id'  => 'Laporan #003',
+                'latitude'   => -8.2000,
+                'longitude'  => 113.6500,
+                'judul'      => 'Titik Laporan 3 - Pasar Tanjung',
+                'ket'        => 'Jl. Samanhudi, Jember',
+                'created_at' => date('Y-m-d H:i:s')
+            ]
+        ];
+    } else {
         $points = array_reverse($points);
     }
 
     echo json_encode([
         'status' => 'success',
         'count'  => count($points),
+        'table'  => $tableName,
         'data'   => $points
     ], JSON_PRETTY_PRINT);
 
