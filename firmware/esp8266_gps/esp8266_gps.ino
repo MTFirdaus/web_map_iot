@@ -20,15 +20,16 @@
 #include <ESP8266HTTPClient.h>
 #include <WiFiClient.h>
 #include <SoftwareSerial.h>
-#include <TinyGPS++.h>
+#include <TinyGPS++.h>x
 
 // --- KONFIGURASI WIFI & LAPTOP ---
-const char* wifi_ssid     = "NAMA_WIFI_LAPTOP_ATAU_HOTSPOT"; // SSID WiFi Laptop/Hotspot
-const char* wifi_password = "PASSWORD_WIFI";                  // Password WiFi
+const char* wifi_ssid     = "Jti"; // SSID WiFi Laptop/Hotspot
+const char* wifi_password = "123jti456";                  // Password WiFi
 
 // GANTI DENGAN IP LAPTOP ANDA (Cek via cmd laptop: `ipconfig` -> IPv4 Address)
 // Contoh IP: http://192.168.1.15/web_map_iot/api/save_gps.php
-const char* server_api_url = "http://192.168.1.10/web_map_iot/api/save_gps.php";
+const char* server_api_url = "http://10.10.2.170/api/save_gps.php";
+
 
 // --- PINOUT SOFTWAERIAL UNTUK WEMOS ---
 #define RX_PIN D5 // D5 Wemos dihubungkan ke PIN TX Modul GY-GPS6MV2
