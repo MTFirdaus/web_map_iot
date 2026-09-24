@@ -1,0 +1,10 @@
+# Editor files
+.vscode/
+.idea/
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Config sensitive files (jika nanti pakai file env)
+.env
