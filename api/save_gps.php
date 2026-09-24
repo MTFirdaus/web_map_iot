@@ -68,45 +68,95 @@ try {
     $hasDeviceId  = in_array('device_id', $columns);
     $timeCol      = in_array('created_at', $columns) ? 'created_at' : (in_array('timestamp', $columns) ? 'timestamp' : null);
 
+    // Cek apakah data untuk device_id ini sudah ada di database
+    $existing = null;
     if ($hasDeviceId) {
-        if ($timeCol) {
-            $sql = "INSERT INTO `{$tableName}` (`device_id`, `{$latCol}`, `{$lngCol}`, `{$timeCol}`) VALUES (:dev, :lat, :lng, NOW())";
-        } else {
-            $sql = "INSERT INTO `{$tableName}` (`device_id`, `{$latCol}`, `{$lngCol}`) VALUES (:dev, :lat, :lng)";
-        }
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([
-            ':dev' => $deviceId,
-            ':lat' => $latFloat,
-            ':lng' => $lngFloat
-        ]);
+        $checkStmt = $pdo->prepare("SELECT id FROM `{$tableName}` WHERE `device_id` = :dev ORDER BY id ASC LIMIT 1");
+        $checkStmt->execute([':dev' => $deviceId]);
+        $existing = $checkStmt->fetch(PDO::FETCH_ASSOC);
     } else {
-        if ($timeCol) {
-            $sql = "INSERT INTO `{$tableName}` (`{$latCol}`, `{$lngCol}`, `{$timeCol}`) VALUES (:lat, :lng, NOW())";
-        } else {
-            $sql = "INSERT INTO `{$tableName}` (`{$latCol}`, `{$lngCol}`) VALUES (:lat, :lng)";
-        }
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([
-            ':lat' => $latFloat,
-            ':lng' => $lngFloat
-        ]);
+        $checkStmt = $pdo->query("SELECT id FROM `{$tableName}` ORDER BY id ASC LIMIT 1");
+        $existing = $checkStmt->fetch(PDO::FETCH_ASSOC);
     }
 
-    $insertId = $pdo->lastInsertId();
+    if ($existing) {
+        // MODE UPDATE: Hanya update baris yang sudah ada (tidak menambah baris baru!)
+        $rowId = (int)$existing['id'];
+        if ($timeCol) {
+            $sql = "UPDATE `{$tableName}` SET `{$latCol}` = :lat, `{$lngCol}` = :lng, `{$timeCol}` = NOW() WHERE `id` = :id";
+        } else {
+            $sql = "UPDATE `{$tableName}` SET `{$latCol}` = :lat, `{$lngCol}` = :lng WHERE `id` = :id";
+        }
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([
+            ':lat' => $latFloat,
+            ':lng' => $lngFloat,
+            ':id'  => $rowId
+        ]);
 
-    http_response_code(201);
-    echo json_encode([
-        'status'  => 'success',
-        'message' => 'Data lokasi berhasil disimpan ke database',
-        'data'    => [
-            'id'         => (int)$insertId,
-            'device_id'  => $deviceId,
-            'latitude'   => $latFloat,
-            'longitude'  => $lngFloat,
-            'created_at' => date('Y-m-d H:i:s')
-        ]
-    ], JSON_PRETTY_PRINT);
+        // Bersihkan sisa baris duplikat lain jika sebelumnya sempat menumpuk
+        if ($hasDeviceId) {
+            $cleanStmt = $pdo->prepare("DELETE FROM `{$tableName}` WHERE `device_id` = :dev AND `id` != :id");
+            $cleanStmt->execute([':dev' => $deviceId, ':id' => $rowId]);
+        }
+
+        http_response_code(200);
+        echo json_encode([
+            'status'  => 'success',
+            'action'  => 'updated',
+            'message' => 'Koordinat GPS berhasil diperbarui (UPDATE)',
+            'data'    => [
+                'id'         => $rowId,
+                'device_id'  => $deviceId,
+                'latitude'   => $latFloat,
+                'longitude'  => $lngFloat,
+                'updated_at' => date('Y-m-d H:i:s')
+            ]
+        ], JSON_PRETTY_PRINT);
+
+    } else {
+        // Baris belum ada: Insert 1 baris pertama
+        if ($hasDeviceId) {
+            if ($timeCol) {
+                $sql = "INSERT INTO `{$tableName}` (`device_id`, `{$latCol}`, `{$lngCol}`, `{$timeCol}`) VALUES (:dev, :lat, :lng, NOW())";
+            } else {
+                $sql = "INSERT INTO `{$tableName}` (`device_id`, `{$latCol}`, `{$lngCol}`) VALUES (:dev, :lat, :lng)";
+            }
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([
+                ':dev' => $deviceId,
+                ':lat' => $latFloat,
+                ':lng' => $lngFloat
+            ]);
+        } else {
+            if ($timeCol) {
+                $sql = "INSERT INTO `{$tableName}` (`{$latCol}`, `{$lngCol}`, `{$timeCol}`) VALUES (:lat, :lng, NOW())";
+            } else {
+                $sql = "INSERT INTO `{$tableName}` (`{$latCol}`, `{$lngCol}`) VALUES (:lat, :lng)";
+            }
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([
+                ':lat' => $latFloat,
+                ':lng' => $lngFloat
+            ]);
+        }
+
+        $rowId = (int)$pdo->lastInsertId();
+
+        http_response_code(201);
+        echo json_encode([
+            'status'  => 'success',
+            'action'  => 'created',
+            'message' => 'Baris data lokasi pertama berhasil dibuat',
+            'data'    => [
+                'id'         => $rowId,
+                'device_id'  => $deviceId,
+                'latitude'   => $latFloat,
+                'longitude'  => $lngFloat,
+                'created_at' => date('Y-m-d H:i:s')
+            ]
+        ], JSON_PRETTY_PRINT);
+    }
 
 } catch (PDOException $e) {
     http_response_code(500);

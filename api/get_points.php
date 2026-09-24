@@ -94,10 +94,8 @@ try {
                 'created_at' => date('Y-m-d H:i:s')
             ]
         ];
-    } else {
-        $points = array_reverse($points);
     }
-
+    // Newest record first (DESC)
     echo json_encode([
         'status' => 'success',
         'count'  => count($points),
